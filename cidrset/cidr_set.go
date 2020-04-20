@@ -140,23 +140,37 @@ func (s *CidrSet) indexToCIDRBlock(index int) *net.IPNet {
 	}
 }
 
+// IsFull returns true if CidrSet does not have any more available CIDRs.
+func (s *CidrSet) IsFull() bool {
+	s.Lock()
+	defer s.Unlock()
+	nextUnused := s.nextUnused()
+	return nextUnused == -1
+}
+
+// nextUnused returns the next unused bit. Returns -1 if there are no more
+// available CIDRs
+func (s *CidrSet) nextUnused() int {
+	for i := 0; i < s.maxCIDRs; i++ {
+		candidate := (i + s.nextCandidate) % s.maxCIDRs
+		if s.used.Bit(candidate) == 0 {
+			return candidate
+		}
+	}
+	return -1
+}
+
 // AllocateNext allocates the next free CIDR range. This will set the range
 // as occupied and return the allocated range.
 func (s *CidrSet) AllocateNext() (*net.IPNet, error) {
 	s.Lock()
 	defer s.Unlock()
 
-	nextUnused := -1
-	for i := 0; i < s.maxCIDRs; i++ {
-		candidate := (i + s.nextCandidate) % s.maxCIDRs
-		if s.used.Bit(candidate) == 0 {
-			nextUnused = candidate
-			break
-		}
-	}
+	nextUnused := s.nextUnused()
 	if nextUnused == -1 {
 		return nil, ErrCIDRRangeNoCIDRsRemaining
 	}
+
 	s.nextCandidate = (nextUnused + 1) % s.maxCIDRs
 
 	s.used.SetBit(&s.used, nextUnused, 1)
