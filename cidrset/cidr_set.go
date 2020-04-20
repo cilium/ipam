@@ -186,6 +186,18 @@ func (s *CidrSet) AllocateNext() (*net.IPNet, error) {
 	return s.indexToCIDRBlock(nextUnused), nil
 }
 
+// InRange returns true if the given CIDR is inside the range of the allocatable
+// CidrSet.
+func (s *CidrSet) InRange(cidr *net.IPNet) bool{
+	s.Lock()
+	defer s.Unlock()
+	return s.inRange(cidr)
+}
+
+func (s *CidrSet) inRange(cidr *net.IPNet) bool{
+	return s.clusterCIDR.Contains(cidr.IP.Mask(s.clusterCIDR.Mask)) || cidr.Contains(s.clusterCIDR.IP.Mask(cidr.Mask))
+}
+
 func (s *CidrSet) getBeginingAndEndIndices(cidr *net.IPNet) (begin, end int, err error) {
 	begin, end = 0, s.maxCIDRs-1
 	cidrMask := cidr.Mask
@@ -196,7 +208,7 @@ func (s *CidrSet) getBeginingAndEndIndices(cidr *net.IPNet) (begin, end int, err
 		return -1, -1, fmt.Errorf("error getting indices for cluster cidr %v, cidr is nil", s.clusterCIDR)
 	}
 
-	if !s.clusterCIDR.Contains(cidr.IP.Mask(s.clusterCIDR.Mask)) && !cidr.Contains(s.clusterCIDR.IP.Mask(cidr.Mask)) {
+	if !s.inRange(cidr) {
 		return -1, -1, fmt.Errorf("cidr %v is out the range of cluster cidr %v", cidr, s.clusterCIDR)
 	}
 
