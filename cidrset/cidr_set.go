@@ -30,6 +30,7 @@ import (
 // CidrSet manages a set of CIDR ranges from which blocks of IPs can
 // be allocated from.
 type CidrSet struct {
+	isV6 bool
 	sync.Mutex
 	clusterCIDR     *net.IPNet
 	clusterIP       net.IP
@@ -67,8 +68,9 @@ func NewCIDRSet(clusterCIDR *net.IPNet, subNetMaskSize int) (*CidrSet, error) {
 	clusterMask := clusterCIDR.Mask
 	clusterMaskSize, _ := clusterMask.Size()
 
+	isV6 := clusterCIDR.IP.To4() == nil
 	var maxCIDRs int
-	if (clusterCIDR.IP.To4() == nil) && (subNetMaskSize-clusterMaskSize > clusterSubnetMaxDiff) {
+	if (isV6) && (subNetMaskSize-clusterMaskSize > clusterSubnetMaxDiff) {
 		return nil, ErrCIDRSetSubNetTooBig
 	}
 	maxCIDRs = 1 << uint32(subNetMaskSize-clusterMaskSize)
@@ -78,6 +80,7 @@ func NewCIDRSet(clusterCIDR *net.IPNet, subNetMaskSize int) (*CidrSet, error) {
 		clusterMaskSize: clusterMaskSize,
 		maxCIDRs:        maxCIDRs,
 		subNetMaskSize:  subNetMaskSize,
+		isV6:            isV6,
 	}, nil
 }
 
@@ -138,6 +141,11 @@ func (s *CidrSet) indexToCIDRBlock(index int) *net.IPNet {
 		IP:   ip,
 		Mask: net.CIDRMask(s.subNetMaskSize, mask),
 	}
+}
+
+// IsIPv6 returns true if CidrSet only allocates IPv6 CIDRs.
+func (s *CidrSet) IsIPv6() bool {
+	return s.isV6
 }
 
 // IsFull returns true if CidrSet does not have any more available CIDRs.
