@@ -735,3 +735,46 @@ func TestCIDRSetv6(t *testing.T) {
 		})
 	}
 }
+
+func TestInvalidSubNetMaskSize(t *testing.T) {
+	cases := []struct {
+		clusterCIDRStr string
+		subNetMaskSize int
+		expectErr      bool
+		description    string
+	}{
+		{
+			clusterCIDRStr: "10.0.0.0/24",
+			subNetMaskSize: 32,
+			expectErr:      false,
+			description:    "Check valid subnet mask size with IPv4",
+		},
+		{
+			clusterCIDRStr: "2001:beef:1234:369b::/60",
+			subNetMaskSize: 64,
+			expectErr:      false,
+			description:    "Check valid subnet mask size with IPv6",
+		},
+		{
+			clusterCIDRStr: "10.0.0.0/24",
+			subNetMaskSize: 64,
+			expectErr:      true,
+			description:    "Check invalid subnet mask size with IPv4",
+		},
+		{
+			clusterCIDRStr: "2001:beef:1234:369b::/60",
+			subNetMaskSize: 130,
+			expectErr:      true,
+			description:    "Check invalid subnet mask size with IPv6",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.description, func(t *testing.T) {
+			_, clusterCIDR, _ := net.ParseCIDR(tc.clusterCIDRStr)
+			a, err := NewCIDRSet(clusterCIDR, tc.subNetMaskSize)
+			if gotErr := err != nil; gotErr != tc.expectErr {
+				t.Fatalf("NewCIDRSet(%v, %v) = %v, %v; gotErr = %t, want %t", clusterCIDR, tc.subNetMaskSize, a, err, gotErr, tc.expectErr)
+			}
+		})
+	}
+}
