@@ -18,14 +18,21 @@ package allocator
 
 import (
 	"math/big"
-	"math/bits"
+	"testing"
 )
 
-// countBits returns the number of set bits in n
-func countBits(n *big.Int) int {
-	var count int = 0
-	for _, b := range n.Bytes() {
-		count += bits.OnesCount8(uint8(b))
+func TestCountBits(t *testing.T) {
+	tests := []struct {
+		n        *big.Int
+		expected int
+	}{
+		{n: big.NewInt(int64(0)), expected: 0},
+		{n: big.NewInt(int64(0xffffffffff)), expected: 40},
 	}
-	return count
+	for _, test := range tests {
+		actual := countBits(test.n)
+		if test.expected != actual {
+			t.Errorf("%s should have %d bits but recorded as %d", test.n, test.expected, actual)
+		}
+	}
 }
