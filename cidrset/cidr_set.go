@@ -32,7 +32,6 @@ import (
 type CidrSet struct {
 	sync.Mutex
 	clusterCIDR     *net.IPNet
-	clusterIP       net.IP
 	clusterMaskSize int
 	maxCIDRs        int
 	nextCandidate   int
@@ -90,7 +89,6 @@ func NewCIDRSet(clusterCIDR *net.IPNet, subNetMaskSize int) (*CidrSet, error) {
 	maxCIDRs = 1 << uint32(subNetMaskSize-clusterMaskSize)
 	return &CidrSet{
 		clusterCIDR:     clusterCIDR,
-		clusterIP:       clusterCIDR.IP,
 		clusterMaskSize: clusterMaskSize,
 		maxCIDRs:        maxCIDRs,
 		subNetMaskSize:  subNetMaskSize,
@@ -107,23 +105,23 @@ func (s *CidrSet) indexToCIDRBlock(index int) *net.IPNet {
 	var ip []byte
 	var mask int
 	switch /*v4 or v6*/ {
-	case s.clusterIP.To4() != nil:
+	case s.clusterCIDR.IP.To4() != nil:
 		{
 			j := uint32(index) << uint32(32-s.subNetMaskSize)
-			ipInt := (binary.BigEndian.Uint32(s.clusterIP)) | j
+			ipInt := (binary.BigEndian.Uint32(s.clusterCIDR.IP)) | j
 			ip = make([]byte, 4)
 			binary.BigEndian.PutUint32(ip, ipInt)
 			mask = 32
 
 		}
-	case s.clusterIP.To16() != nil:
+	case s.clusterCIDR.IP.To16() != nil:
 		{
 			// leftClusterIP      |     rightClusterIP
 			// 2001:0DB8:1234:0000:0000:0000:0000:0000
 			const v6NBits = 128
 			const halfV6NBits = v6NBits / 2
-			leftClusterIP := binary.BigEndian.Uint64(s.clusterIP[:halfIPv6Len])
-			rightClusterIP := binary.BigEndian.Uint64(s.clusterIP[halfIPv6Len:])
+			leftClusterIP := binary.BigEndian.Uint64(s.clusterCIDR.IP[:halfIPv6Len])
+			rightClusterIP := binary.BigEndian.Uint64(s.clusterCIDR.IP[halfIPv6Len:])
 
 			leftIP, rightIP := make([]byte, halfIPv6Len), make([]byte, halfIPv6Len)
 
@@ -310,14 +308,14 @@ func (s *CidrSet) getIndexForCIDR(cidr *net.IPNet) (int, error) {
 
 func (s *CidrSet) getIndexForIP(ip net.IP) (int, error) {
 	if ip.To4() != nil {
-		cidrIndex := (binary.BigEndian.Uint32(s.clusterIP) ^ binary.BigEndian.Uint32(ip.To4())) >> uint32(32-s.subNetMaskSize)
+		cidrIndex := (binary.BigEndian.Uint32(s.clusterCIDR.IP) ^ binary.BigEndian.Uint32(ip.To4())) >> uint32(32-s.subNetMaskSize)
 		if cidrIndex >= uint32(s.maxCIDRs) {
 			return 0, fmt.Errorf("CIDR: %v/%v is out of the range of CIDR allocator", ip, s.subNetMaskSize)
 		}
 		return int(cidrIndex), nil
 	}
 	if ip.To16() != nil {
-		bigIP := big.NewInt(0).SetBytes(s.clusterIP)
+		bigIP := big.NewInt(0).SetBytes(s.clusterCIDR.IP)
 		bigIP = bigIP.Xor(bigIP, big.NewInt(0).SetBytes(ip))
 		cidrIndexBig := bigIP.Rsh(bigIP, uint(net.IPv6len*8-s.subNetMaskSize))
 		cidrIndex := cidrIndexBig.Uint64()
