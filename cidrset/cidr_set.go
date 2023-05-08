@@ -43,6 +43,8 @@ type CidrSet struct {
 	nodeMaskSize int
 	// maxCIDRs is the maximum number of CIDRs that can be allocated
 	maxCIDRs int
+	// allocatedCIDRs counts the number of CIDRs allocated
+	allocatedCIDRs int
 	// nextCandidate points to the next CIDR that should be free
 	nextCandidate int
 	// used is a bitmap used to track the CIDRs allocated
@@ -160,20 +162,7 @@ func (s *CidrSet) indexToCIDRBlock(index int) *net.IPNet {
 func (s *CidrSet) IsFull() bool {
 	s.Lock()
 	defer s.Unlock()
-	nextUnused := s.nextUnused()
-	return nextUnused == -1
-}
-
-// nextUnused returns the next unused bit. Returns -1 if there are no more
-// available CIDRs
-func (s *CidrSet) nextUnused() int {
-	for i := 0; i < s.maxCIDRs; i++ {
-		candidate := (i + s.nextCandidate) % s.maxCIDRs
-		if s.used.Bit(candidate) == 0 {
-			return candidate
-		}
-	}
-	return -1
+	return s.allocatedCIDRs == s.maxCIDRs
 }
 
 // AllocateNext allocates the next free CIDR range. This will set the range
@@ -182,16 +171,23 @@ func (s *CidrSet) AllocateNext() (*net.IPNet, error) {
 	s.Lock()
 	defer s.Unlock()
 
-	nextUnused := s.nextUnused()
-	if nextUnused == -1 {
+	if s.allocatedCIDRs == s.maxCIDRs {
 		return nil, ErrCIDRRangeNoCIDRsRemaining
 	}
+	candidate := s.nextCandidate
+	var i int
+	for i = 0; i < s.maxCIDRs; i++ {
+		if s.used.Bit(candidate) == 0 {
+			break
+		}
+		candidate = (candidate + 1) % s.maxCIDRs
+	}
 
-	s.nextCandidate = (nextUnused + 1) % s.maxCIDRs
+	s.nextCandidate = (candidate + 1) % s.maxCIDRs
+	s.used.SetBit(&s.used, candidate, 1)
+	s.allocatedCIDRs++
 
-	s.used.SetBit(&s.used, nextUnused, 1)
-
-	return s.indexToCIDRBlock(nextUnused), nil
+	return s.indexToCIDRBlock(candidate), nil
 }
 
 // InRange returns true if the given CIDR is inside the range of the allocatable
@@ -274,12 +270,17 @@ func (s *CidrSet) Release(cidr *net.IPNet) error {
 	s.Lock()
 	defer s.Unlock()
 	for i := begin; i <= end; i++ {
-		s.used.SetBit(&s.used, i, 0)
+		// Only change the counters if we change the bit to prevent
+		// double counting.
+		if s.used.Bit(i) != 0 {
+			s.used.SetBit(&s.used, i, 0)
+			s.allocatedCIDRs--
+		}
 	}
 	return nil
 }
 
-// Occupy marks the given CIDR range as used. Occupy does not check if the CIDR
+// Occupy marks the given CIDR range as used. Occupy succeeds even if the CIDR
 // range was previously used.
 func (s *CidrSet) Occupy(cidr *net.IPNet) (err error) {
 	begin, end, err := s.getBeginningAndEndIndices(cidr)
@@ -289,7 +290,12 @@ func (s *CidrSet) Occupy(cidr *net.IPNet) (err error) {
 	s.Lock()
 	defer s.Unlock()
 	for i := begin; i <= end; i++ {
-		s.used.SetBit(&s.used, i, 1)
+		// Only change the counters if we change the bit to prevent
+		// double counting.
+		if s.used.Bit(i) == 0 {
+			s.used.SetBit(&s.used, i, 1)
+			s.allocatedCIDRs++
+		}
 	}
 
 	return nil
