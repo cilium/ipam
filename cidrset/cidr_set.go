@@ -204,7 +204,7 @@ func (s *CidrSet) inRange(cidr *net.IPNet) bool {
 	return s.clusterCIDR.Contains(cidr.IP.Mask(s.clusterCIDR.Mask)) || cidr.Contains(s.clusterCIDR.IP.Mask(cidr.Mask))
 }
 
-func (s *CidrSet) getBeginingAndEndIndices(cidr *net.IPNet) (begin, end int, err error) {
+func (s *CidrSet) getBeginningAndEndIndices(cidr *net.IPNet) (begin, end int, err error) {
 	if cidr == nil {
 		return -1, -1, fmt.Errorf("error getting indices for cluster cidr %v, cidr is nil", s.clusterCIDR)
 	}
@@ -256,7 +256,7 @@ func (s *CidrSet) getBeginingAndEndIndices(cidr *net.IPNet) (begin, end int, err
 
 // IsAllocated verifies if the given CIDR is allocated
 func (s *CidrSet) IsAllocated(cidr *net.IPNet) (bool, error) {
-	begin, end, err := s.getBeginingAndEndIndices(cidr)
+	begin, end, err := s.getBeginningAndEndIndices(cidr)
 	if err != nil {
 		return false, err
 	}
@@ -272,7 +272,7 @@ func (s *CidrSet) IsAllocated(cidr *net.IPNet) (bool, error) {
 
 // Release releases the given CIDR range.
 func (s *CidrSet) Release(cidr *net.IPNet) error {
-	begin, end, err := s.getBeginingAndEndIndices(cidr)
+	begin, end, err := s.getBeginningAndEndIndices(cidr)
 	if err != nil {
 		return err
 	}
@@ -287,7 +287,7 @@ func (s *CidrSet) Release(cidr *net.IPNet) error {
 // Occupy marks the given CIDR range as used. Occupy does not check if the CIDR
 // range was previously used.
 func (s *CidrSet) Occupy(cidr *net.IPNet) (err error) {
-	begin, end, err := s.getBeginingAndEndIndices(cidr)
+	begin, end, err := s.getBeginningAndEndIndices(cidr)
 	if err != nil {
 		return err
 	}
